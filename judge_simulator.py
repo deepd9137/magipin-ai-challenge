@@ -23,20 +23,20 @@ Author: magicpin AI Challenge Team
 # Your bot's URL (where your bot is running)
 BOT_URL = "http://localhost:8080"
 
-# Choose your LLM provider: "openai", "anthropic", "gemini", "deepseek", "groq", "ollama", "openrouter"
-LLM_PROVIDER = "gemini"
+# Choose your LLM provider: "openai", "anthropic", "gemini", "deepseek", "groq", "ollama", "openrouter", "nvidia"
+LLM_PROVIDER = "nvidia"
 
 # Your API key (paste your key here)
-LLM_API_KEY = "AIzaSyBXA4OVzU1IEKJ2dDn7UQ-Zol2GIJV-bIs"  # <-- PUT YOUR API KEY HERE
+LLM_API_KEY = "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"
 
 # Model to use (leave empty for default, or specify like "gpt-4o", "claude-3-5-sonnet-20241022", etc.)
-LLM_MODEL = "gemini-2.5-flash"  # <-- Optional: specify model or leave empty for default
+LLM_MODEL = "meta/llama-3.1-70b-instruct"  # NVIDIA NIM — strong enough to judge composition quality
 
 # For Ollama only: local server URL
 OLLAMA_URL = "http://localhost:11434"
 
 # Which test to run by default
-TEST_SCENARIO = "all"
+TEST_SCENARIO = "full_evaluation"
 
 # =============================================================================
 # ██████  END OF CONFIGURATION - DON'T EDIT BELOW THIS LINE ██████
@@ -54,6 +54,11 @@ from typing import Optional, List, Dict, Any, Tuple
 from pathlib import Path
 from urllib import request as urlrequest, error as urlerror
 from abc import ABC, abstractmethod
+
+# Allow env-var overrides for CI / command-line use
+TEST_SCENARIO = os.environ.get("TEST_SCENARIO", TEST_SCENARIO)
+BOT_URL = os.environ.get("BOT_URL", BOT_URL)
+LLM_API_KEY = os.environ.get("LLM_API_KEY", LLM_API_KEY)
 
 # Constants
 TIMEOUT_LLM = 45
@@ -325,6 +330,40 @@ class OpenRouterProvider(LLMProvider):
         return data["choices"][0]["message"]["content"]
 
 
+class NvidiaProvider(LLMProvider):
+    """NVIDIA NIM — OpenAI-compatible endpoint at integrate.api.nvidia.com."""
+
+    def __init__(self, api_key: str, model: str = ""):
+        self.api_key = api_key
+        self.model = model or "meta/llama-3.1-70b-instruct"
+
+    def name(self) -> str:
+        return f"NVIDIA NIM ({self.model})"
+
+    def complete(self, prompt: str, system: str = None) -> str:
+        messages = []
+        if system:
+            messages.append({"role": "system", "content": system})
+        messages.append({"role": "user", "content": prompt})
+
+        req = urlrequest.Request(
+            "https://integrate.api.nvidia.com/v1/chat/completions",
+            data=json.dumps({
+                "model": self.model,
+                "messages": messages,
+                "temperature": 0.2,
+                "max_tokens": 1500,
+            }).encode("utf-8"),
+            headers={
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json",
+            },
+        )
+        resp = urlrequest.urlopen(req, timeout=TIMEOUT_LLM)
+        data = json.loads(resp.read().decode("utf-8"))
+        return data["choices"][0]["message"]["content"]
+
+
 def create_provider() -> LLMProvider:
     """Create LLM provider from configuration."""
     providers = {
@@ -335,6 +374,7 @@ def create_provider() -> LLMProvider:
         "groq": lambda: GroqProvider(LLM_API_KEY, LLM_MODEL),
         "ollama": lambda: OllamaProvider(LLM_MODEL, OLLAMA_URL),
         "openrouter": lambda: OpenRouterProvider(LLM_API_KEY, LLM_MODEL),
+        "nvidia": lambda: NvidiaProvider(LLM_API_KEY, LLM_MODEL),
     }
 
     if LLM_PROVIDER not in providers:

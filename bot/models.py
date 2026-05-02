@@ -11,6 +11,11 @@ VALID_CTA = {"open_ended", "binary_yes_no", "binary_confirm_cancel", "multi_choi
 
 # ── Inbound request bodies ─────────────────────────────────────────────────
 
+from typing import Any, Dict, List, Optional
+
+from pydantic import BaseModel
+
+
 class CtxBody(BaseModel):
     scope: str
     context_id: str
@@ -22,6 +27,7 @@ class CtxBody(BaseModel):
 class TickBody(BaseModel):
     now: str
     available_triggers: List[str] = Field(default_factory=list)
+    available_triggers: List[str]
 
 
 class ReplyBody(BaseModel):
@@ -60,3 +66,7 @@ class ReplyResponse(BaseModel):
     cta: Optional[str] = None
     wait_seconds: Optional[int] = None
     rationale: str = ""
+    from_role: str
+    message: str
+    received_at: str
+    turn_number: int

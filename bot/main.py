@@ -72,12 +72,36 @@ async def healthz():
     return {
         "status": "ok",
         "uptime_seconds": int(time.time() - START),
+import time
+
+from typing import Any, Dict
+
+from fastapi import FastAPI
+from fastapi.responses import JSONResponse
+
+from bot.config import settings
+from bot.models import CtxBody, ReplyBody, TickBody
+from bot.services.context_service import ContextService
+from bot.state import store
+
+app = FastAPI(title="Vera Bot")
+
+_START = time.time()
+ctx_service = ContextService(store)
+
+
+@app.get("/v1/healthz")
+async def healthz() -> Dict[str, Any]:
+    return {
+        "status": "ok",
+        "uptime_seconds": int(time.time() - _START),
         "contexts_loaded": store.counts_by_scope(),
     }
 
 
 @app.get("/v1/metadata")
 async def metadata():
+async def metadata() -> Dict[str, Any]:
     return settings.metadata_dict()
 
 
@@ -112,4 +136,25 @@ async def reply(body: ReplyBody):
         "body": "Thank you for your reply — our team will follow up shortly.",
         "cta": "open_ended",
         "rationale": "reply handler stub (Phase 4)",
+async def push_context(body: CtxBody) -> JSONResponse:
+    status_code, result = ctx_service.put(
+        body.scope, body.context_id, body.version, body.payload
+    )
+    return JSONResponse(content=result, status_code=status_code)
+
+
+@app.post("/v1/tick")
+async def tick(body: TickBody) -> Dict[str, Any]:
+    # Stub — Phase 2 wires in the LLM composer
+    return {"actions": []}
+
+
+@app.post("/v1/reply")
+async def reply(body: ReplyBody) -> Dict[str, str]:
+    # Stub — Phase 4 wires in the intent classifier and reply handler
+    return {
+        "action": "send",
+        "body": "ack",
+        "cta": "open_ended",
+        "rationale": "stub",
     }

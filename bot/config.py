@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import List
+from typing import Any, Dict, List
 
 
 def _members() -> list[str]:
@@ -31,7 +31,7 @@ class Settings:
         default_factory=lambda: datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     )
 
-    def metadata_dict(self) -> dict:
+    def metadata_dict(self) -> Dict[str, Any]:
         return {
             "team_name": self.team_name,
             "team_members": self.team_members,

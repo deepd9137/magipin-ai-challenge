@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import time
 
+from typing import Any, Dict
+
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
@@ -17,7 +19,7 @@ ctx_service = ContextService(store)
 
 
 @app.get("/v1/healthz")
-async def healthz() -> dict:
+async def healthz() -> Dict[str, Any]:
     return {
         "status": "ok",
         "uptime_seconds": int(time.time() - _START),
@@ -26,7 +28,7 @@ async def healthz() -> dict:
 
 
 @app.get("/v1/metadata")
-async def metadata() -> dict:
+async def metadata() -> Dict[str, Any]:
     return settings.metadata_dict()
 
 
@@ -39,13 +41,13 @@ async def push_context(body: CtxBody) -> JSONResponse:
 
 
 @app.post("/v1/tick")
-async def tick(body: TickBody) -> dict:
+async def tick(body: TickBody) -> Dict[str, Any]:
     # Stub — Phase 2 wires in the LLM composer
     return {"actions": []}
 
 
 @app.post("/v1/reply")
-async def reply(body: ReplyBody) -> dict:
+async def reply(body: ReplyBody) -> Dict[str, str]:
     # Stub — Phase 4 wires in the intent classifier and reply handler
     return {
         "action": "send",

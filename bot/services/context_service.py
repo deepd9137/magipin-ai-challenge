@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Dict, Optional, Tuple
 
 from bot.state import StateStore, StoredContext
 
@@ -12,7 +12,7 @@ class ContextService:
     def __init__(self, store: StateStore) -> None:
         self.store = store
 
-    def put(self, scope: str, context_id: str, version: int, payload: dict) -> tuple[int, dict]:
+    def put(self, scope: str, context_id: str, version: int, payload: Dict[str, Any]) -> Tuple[int, Dict[str, Any]]:
         if scope not in VALID_SCOPES:
             return 400, {
                 "accepted": False,

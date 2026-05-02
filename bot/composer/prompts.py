@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 BASE_SYSTEM = """\
 You are Vera, magicpin's merchant AI assistant. You compose short, high-impact WhatsApp \
@@ -29,6 +29,28 @@ OUTPUT FORMAT — strict JSON only, no markdown, no commentary:
   "rationale": "<1-2 sentence explanation of why this message, what compulsion lever used>"
 }
 """
+
+
+def build_system_prompt(voice_pack: Dict[str, Any], framing: str) -> str:
+    """Build the per-composition system prompt: base rules + category voice + trigger framing."""
+    salutation = voice_pack.get("salutation", "{first_name}")
+    taboo: List[str] = voice_pack.get("vocab_taboo", [])
+    voice_instructions = voice_pack.get("voice_instructions", "")
+
+    voice_section = (
+        "\n=== VOICE PACK ===\n"
+        f"Salutation format: {salutation}\n"
+        f"Additional taboo words (never use): {', '.join(taboo) if taboo else 'none'}\n"
+        f"Voice instructions: {voice_instructions}\n"
+    )
+
+    framing_section = (
+        "\n=== TRIGGER FRAMING GUIDE ===\n"
+        f"Follow this guidance to shape your message for this specific trigger kind:\n"
+        f"{framing}\n"
+    )
+
+    return BASE_SYSTEM + voice_section + framing_section
 
 
 def _safe(val: Any) -> str:

@@ -1,91 +1,46 @@
 from __future__ import annotations
 
 import os
-from datetime import datetime
-from typing import List
-
-from dotenv import load_dotenv
-
-load_dotenv()
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from typing import Any, Dict, List
 
 
-def _list(val: str) -> List[str]:
-    return [v.strip() for v in val.split(",") if v.strip()]
+def _members() -> list[str]:
+    raw = os.getenv("TEAM_MEMBERS", "Deepanshu")
+    return [m.strip() for m in raw.split(",") if m.strip()]
 
 
-class _Settings:
-    team_name: str
-    team_members: List[str]
-    version: str
-    llm_provider: str
-    llm_api_key: str
-    llm_model: str
-    nvidia_key: str
-    nvidia_model: str
-    model: str
+@dataclass
+class Settings:
+    team_name: str = field(default_factory=lambda: os.getenv("TEAM_NAME", "Team Vera"))
+    team_members: List[str] = field(default_factory=_members)
+    model: str = field(default_factory=lambda: os.getenv("MODEL", "claude-sonnet-4-6"))
+    approach: str = field(
+        default_factory=lambda: os.getenv(
+            "APPROACH",
+            "4-layer context composition (category + merchant + trigger + customer) "
+            "with per-trigger prompt framing, voice-pack enforcement, and anti-fabrication validation",
+        )
+    )
+    contact_email: str = field(
+        default_factory=lambda: os.getenv("CONTACT_EMAIL", "deepd9137@gmail.com")
+    )
+    version: str = field(default_factory=lambda: os.getenv("VERSION", "1.0.0"))
+    submitted_at: str = field(
+        default_factory=lambda: datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    )
 
-    def __init__(self) -> None:
-        self.team_name = os.environ.get("TEAM_NAME", "Vera AI")
-        self.team_members = _list(os.environ.get("TEAM_MEMBERS", "Deepanshu Pofare"))
-        self.version = os.environ.get("VERSION", "2.0.0")
-
-        self.llm_provider = os.environ.get("LLM_PROVIDER", "")
-        self.llm_api_key = os.environ.get("LLM_API_KEY", "")
-        self.llm_model = os.environ.get("LLM_MODEL", "")
-
-        # NVIDIA NIM fallback
-        self.nvidia_key = os.environ.get("NVIDIA_API_KEY", "")
-        self.nvidia_model = os.environ.get("NVIDIA_MODEL", "openai/gpt-oss-20b")
-
-        # Auto-detect primary provider from known key env vars
-        if not self.llm_provider:
-            if os.environ.get("ANTHROPIC_API_KEY"):
-                self.llm_provider = "anthropic"
-            elif os.environ.get("GEMINI_API_KEY"):
-                self.llm_provider = "gemini"
-            elif os.environ.get("OPENAI_API_KEY"):
-                self.llm_provider = "openai"
-            elif self.nvidia_key:
-                self.llm_provider = "nvidia"
-            else:
-                self.llm_provider = "anthropic"
-
-        # Resolve API key from provider-specific env vars if not set directly
-        if not self.llm_api_key:
-            key_map = {
-                "anthropic": "ANTHROPIC_API_KEY",
-                "gemini": "GEMINI_API_KEY",
-                "openai": "OPENAI_API_KEY",
-                "nvidia": "NVIDIA_API_KEY",
-            }
-            env_var = key_map.get(self.llm_provider, "")
-            self.llm_api_key = os.environ.get(env_var, "")
-
-        # Default model per provider
-        if not self.llm_model:
-            defaults = {
-                "anthropic": "claude-sonnet-4-6",
-                "gemini": "gemini-2.0-flash",
-                "openai": "gpt-4o-mini",
-                "nvidia": self.nvidia_model,
-            }
-            self.llm_model = defaults.get(self.llm_provider, "unknown")
-
-        self.model = f"{self.llm_provider}:{self.llm_model}"
-
-    def metadata_dict(self) -> dict:
+    def metadata_dict(self) -> Dict[str, Any]:
         return {
             "team_name": self.team_name,
             "team_members": self.team_members,
             "model": self.model,
-            "approach": (
-                "4-layer context composition (category+merchant+trigger+customer) "
-                "via LLM with anti-fabrication validation and suppression dedup"
-            ),
-            "contact_email": "deepd9137@gmail.com",
+            "approach": self.approach,
+            "contact_email": self.contact_email,
             "version": self.version,
-            "submitted_at": datetime.utcnow().isoformat() + "Z",
+            "submitted_at": self.submitted_at,
         }
 
 
-settings = _Settings()
+settings = Settings()

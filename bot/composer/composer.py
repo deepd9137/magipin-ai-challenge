@@ -101,7 +101,7 @@ def compose(
 
         t0 = time.time()
         try:
-            raw = llm.complete(system, current_user, max_tokens=800, temperature=0.0, timeout=25)
+            raw = llm.complete(system, current_user, max_tokens=400, temperature=0.0, timeout=22)
         except Exception as exc:
             log.warning(
                 "llm_error attempt=%d trigger=%s merchant=%s error=%s",

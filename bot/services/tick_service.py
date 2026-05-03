@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from ..composer.composer import compose
 from ..llm.adapter import LLMProvider
@@ -13,6 +13,8 @@ from ..suppression import SuppressionTracker
 log = logging.getLogger(__name__)
 
 MAX_ACTIONS = 20
+TICK_DEADLINE = 28.0   # seconds — overall budget for the entire /v1/tick call
+COMPOSE_TIMEOUT = 22.0  # seconds — per-trigger LLM budget (fits 2 retries within TICK_DEADLINE)
 
 
 def _parse_dt(iso: Optional[str]) -> Optional[datetime]:
@@ -38,10 +40,11 @@ class TickService:
 
     async def handle(self, now_str: str, available_triggers: List[str]) -> Dict[str, Any]:
         now = _now_utc(now_str)
-        actions = []
 
+        # ── Phase 1: fast filter (no LLM) ────────────────────────────────────
+        candidates: List[Tuple] = []
         for trg_id in available_triggers[:MAX_ACTIONS * 2]:
-            if len(actions) >= MAX_ACTIONS:
+            if len(candidates) >= MAX_ACTIONS:
                 break
 
             stored_trg = self.store.contexts.get(("trigger", trg_id))
@@ -51,19 +54,16 @@ class TickService:
 
             t = stored_trg.payload
 
-            # Expiry check — skip before any LLM call
             expires_at = _parse_dt(t.get("expires_at"))
             if expires_at and expires_at < now:
                 log.info("tick_skip reason=expired id=%s expires=%s", trg_id, expires_at)
                 continue
 
-            # Suppression check
             suppression_key = t.get("suppression_key", "")
             if self.suppression.is_suppressed(suppression_key):
                 log.info("tick_skip reason=suppressed key=%s", suppression_key)
                 continue
 
-            # Merchant lookup
             mid = t.get("merchant_id")
             if not mid:
                 log.info("tick_skip reason=no_merchant_id trigger=%s", trg_id)
@@ -75,8 +75,6 @@ class TickService:
                 continue
 
             merchant = stored_merchant.payload
-
-            # Category lookup via merchant.category_slug
             cat_slug = merchant.get("category_slug")
             if not cat_slug:
                 log.info("tick_skip reason=no_category_slug merchant=%s", mid)
@@ -89,7 +87,6 @@ class TickService:
 
             category = stored_cat.payload
 
-            # Customer lookup (customer-scope triggers)
             customer: Optional[Dict[str, Any]] = None
             cid = t.get("customer_id")
             if cid:
@@ -110,36 +107,73 @@ class TickService:
 
             trigger_data = {**t, "id": trg_id}
             conv_id = f"conv_{mid}_{trg_id}"
-
-            # Collect prior bot bodies from conversation history for repetition check
             prior_bot_bodies = [
                 turn.body
                 for turn in self.store.conversations.get(conv_id, [])
                 if turn.from_role == "vera"
             ]
 
+            candidates.append((trg_id, category, merchant, trigger_data, customer, conv_id, cid, mid))
+
+        if not candidates:
+            return {"actions": []}
+
+        # ── Phase 2: compose all candidates in parallel ───────────────────────
+        loop = asyncio.get_event_loop()
+
+        async def _compose_one(
+            trg_id: str,
+            category: dict,
+            merchant: dict,
+            trigger_data: dict,
+            customer: Optional[dict],
+            conv_id: str,
+            cid: Optional[str],
+            mid: str,
+            prior_bot_bodies: List[str],
+        ) -> Optional[Tuple]:
             try:
                 result = await asyncio.wait_for(
-                    asyncio.get_event_loop().run_in_executor(
-                        None, compose, category, merchant, trigger_data, customer,
-                        self.llm, prior_bot_bodies,
+                    loop.run_in_executor(
+                        None, compose, category, merchant, trigger_data,
+                        customer, self.llm, prior_bot_bodies,
                     ),
-                    timeout=27.0,
+                    timeout=COMPOSE_TIMEOUT,
                 )
             except asyncio.TimeoutError:
                 log.warning("tick_timeout trigger=%s", trg_id)
-                continue
+                return None
             except Exception as exc:
                 log.warning("tick_compose_error trigger=%s error=%s", trg_id, exc)
-                continue
+                return None
 
             if result is None:
-                continue
+                return None
+            return (trg_id, result, conv_id, cid, mid)
 
-            # Mark suppression key as fired
+        tasks = [
+            _compose_one(trg_id, cat, merch, tdata, cust, conv_id, cid, mid,
+                         [turn.body for turn in self.store.conversations.get(conv_id, [])
+                          if turn.from_role == "vera"])
+            for trg_id, cat, merch, tdata, cust, conv_id, cid, mid in candidates
+        ]
+
+        try:
+            results = await asyncio.wait_for(asyncio.gather(*tasks), timeout=TICK_DEADLINE)
+        except asyncio.TimeoutError:
+            log.warning("tick_deadline_exceeded returning partial actions")
+            # gather timed out — collect whatever finished
+            results = [t.result() if t.done() and not t.cancelled() else None for t in tasks]
+
+        # ── Phase 3: collect actions ──────────────────────────────────────────
+        actions = []
+        for item in results:
+            if item is None:
+                continue
+            trg_id, result, conv_id, cid, mid = item
+
             self.suppression.mark_fired(result.suppression_key)
 
-            # Store Vera's turn in conversation history
             turns = self.store.conversations.setdefault(conv_id, [])
             turns.append(Turn(
                 ts=datetime.now(timezone.utc),

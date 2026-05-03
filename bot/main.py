@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 from .config import settings
 from .models import CtxBody, ReplyBody, TickBody
 from .services.context_service import ContextService
+from .services.reply_service import ReplyService
 from .services.tick_service import TickService
 from .state import store
 
@@ -63,6 +64,7 @@ def _build_llm() -> "LLMProvider":
 
 _llm = _build_llm()
 tick_service = TickService(store=store, llm=_llm)
+reply_service = ReplyService(store=store, llm=_llm)
 
 
 # ── Routes ────────────────────────────────────────────────────────────────
@@ -72,36 +74,12 @@ async def healthz():
     return {
         "status": "ok",
         "uptime_seconds": int(time.time() - START),
-import time
-
-from typing import Any, Dict
-
-from fastapi import FastAPI
-from fastapi.responses import JSONResponse
-
-from bot.config import settings
-from bot.models import CtxBody, ReplyBody, TickBody
-from bot.services.context_service import ContextService
-from bot.state import store
-
-app = FastAPI(title="Vera Bot")
-
-_START = time.time()
-ctx_service = ContextService(store)
-
-
-@app.get("/v1/healthz")
-async def healthz() -> Dict[str, Any]:
-    return {
-        "status": "ok",
-        "uptime_seconds": int(time.time() - _START),
         "contexts_loaded": store.counts_by_scope(),
     }
 
 
 @app.get("/v1/metadata")
 async def metadata():
-async def metadata() -> Dict[str, Any]:
     return settings.metadata_dict()
 
 
@@ -126,35 +104,15 @@ async def tick(body: TickBody):
 
 @app.post("/v1/reply")
 async def reply(body: ReplyBody):
-    # Phase 2 stub — full reply handler lands in Phase 4
-    conv_id = body.conversation_id
-    if conv_id in store.ended_conversations:
-        return {"action": "end", "rationale": "conversation already ended"}
-
-    return {
-        "action": "send",
-        "body": "Thank you for your reply — our team will follow up shortly.",
-        "cta": "open_ended",
-        "rationale": "reply handler stub (Phase 4)",
-async def push_context(body: CtxBody) -> JSONResponse:
-    status_code, result = ctx_service.put(
-        body.scope, body.context_id, body.version, body.payload
-    )
-    return JSONResponse(content=result, status_code=status_code)
-
-
-@app.post("/v1/tick")
-async def tick(body: TickBody) -> Dict[str, Any]:
-    # Stub — Phase 2 wires in the LLM composer
-    return {"actions": []}
-
-
-@app.post("/v1/reply")
-async def reply(body: ReplyBody) -> Dict[str, str]:
-    # Stub — Phase 4 wires in the intent classifier and reply handler
-    return {
-        "action": "send",
-        "body": "ack",
-        "cta": "open_ended",
-        "rationale": "stub",
-    }
+    try:
+        return reply_service.handle(
+            conv_id=body.conversation_id,
+            merchant_id=body.merchant_id,
+            customer_id=body.customer_id,
+            from_role=body.from_role,
+            message=body.message,
+            turn_number=body.turn_number,
+        )
+    except Exception:
+        logging.getLogger(__name__).exception("reply_unhandled_error")
+        return {"action": "wait", "wait_seconds": 3600, "rationale": "internal error; backing off"}

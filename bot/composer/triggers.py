@@ -116,6 +116,13 @@ TRIGGER_FRAMINGS: dict[str, str] = {
         "Calculate days remaining — use it as the urgency anchor. "
         "Offer a specific program with price. Honor preferred slot times."
     ),
+    "bridal_followup": (
+        "CUSTOMER-FACING. Reference the bridal trial or consultation completed and the upcoming wedding date. "
+        "State days remaining to wedding — that is the urgency anchor. "
+        "Offer the full bridal package with price and what it includes. "
+        "Reference the customer's preferred slot times from context. "
+        "Single binary CTA — make booking feel like the natural next step."
+    ),
     "ipl_match_today": (
         "Operator intelligence: Saturday/Sunday IPL usually shifts customers to home-viewing "
         "— push delivery-optimized offers, not dine-in. Weeknight matches can drive traffic. "

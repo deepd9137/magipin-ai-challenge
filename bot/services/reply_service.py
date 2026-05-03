@@ -44,14 +44,21 @@ class ReplyService:
         ))
 
         if intent == Intent.AUTO_REPLY:
-            return self._handle_auto_reply(conv_id, history, turn_number)
-        if intent in (Intent.OPT_OUT, Intent.HOSTILE):
-            return self._handle_exit(conv_id, intent)
-        if intent == Intent.INTENT_COMMIT:
-            return self._handle_commit(conv_id, merchant_id, history)
-        if intent == Intent.OFF_TOPIC:
-            return self._handle_off_topic(conv_id, history)
-        return self._handle_engaged(conv_id, merchant_id, customer_id, history)
+            result = self._handle_auto_reply(conv_id, history, turn_number)
+        elif intent in (Intent.OPT_OUT, Intent.HOSTILE):
+            result = self._handle_exit(conv_id, intent)
+        elif intent == Intent.INTENT_COMMIT:
+            result = self._handle_commit(conv_id, merchant_id, history)
+        elif intent == Intent.OFF_TOPIC:
+            result = self._handle_off_topic(conv_id, history)
+        else:
+            result = self._handle_engaged(conv_id, merchant_id, customer_id, history)
+
+        log.info(
+            '{"event":"reply_action","conv_id":"%s","action":"%s","intent":"%s","turn":%d}',
+            conv_id, result.get("action", "unknown"), intent.value, turn_number,
+        )
+        return result
 
     # ── Intent handlers ───────────────────────────────────────────────────────
 

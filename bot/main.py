@@ -1,24 +1,41 @@
 from __future__ import annotations
 
 import logging
+import os
 import time
+from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
 from .config import settings
+from .logging_config import setup_logging
 from .models import CtxBody, ReplyBody, TickBody
 from .services.context_service import ContextService
 from .services.reply_service import ReplyService
 from .services.tick_service import TickService
 from .state import store
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(name)s %(message)s",
-)
+setup_logging(os.environ.get("LOG_LEVEL", "INFO"))
+log = logging.getLogger(__name__)
 
-app = FastAPI(title="Vera Bot", version=settings.version)
+
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
+    log.info(
+        "vera_startup",
+        extra={
+            "event": "startup",
+            "team": settings.team_name,
+            "version": settings.version,
+            "model": settings.model,
+            "llm_provider": settings.llm_provider,
+        },
+    )
+    yield
+
+
+app = FastAPI(title="Vera Bot", version=settings.version, lifespan=_lifespan)
 START = time.time()
 
 ctx_service = ContextService(store)
